@@ -114,7 +114,7 @@ export default function Home() {
         )}
 
         {connecting && (
-          <p style={{ color: '#666' }}>Connecting to wallet...</p>
+          <p style={{ color: '#666' }}>Connecting to wallet....</p>
         )}
       </div>
     </main>
