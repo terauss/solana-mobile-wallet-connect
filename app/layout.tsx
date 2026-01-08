@@ -1,9 +1,19 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { WalletProvider } from '@/components/WalletProvider';
+import dynamic from 'next/dynamic';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
+
+// Dynamically import WalletProvider with SSR disabled
+// This prevents wallet adapters from being initialized on the server
+const WalletProvider = dynamic(
+  () => import('@/components/WalletProvider').then((mod) => mod.WalletProvider),
+  { 
+    ssr: false,
+    loading: () => null // Don't show loading state
+  }
+);
 
 export const metadata: Metadata = {
   title: 'Solana Wallet Connect',

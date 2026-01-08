@@ -18,8 +18,10 @@ export default function Home() {
   const { connection } = useConnection();
   const [balance, setBalance] = useState<number | null>(null);
   const [platform, setPlatform] = useState<'android' | 'other'>('other');
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     // Detect platform on client side
     if (typeof window !== 'undefined') {
       setPlatform(isAndroid() ? 'android' : 'other');
@@ -36,6 +38,11 @@ export default function Home() {
       setBalance(null);
     }
   }, [connected, publicKey, connection]);
+
+  // Don't render wallet UI until mounted (prevents SSR/hydration issues)
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <main style={{

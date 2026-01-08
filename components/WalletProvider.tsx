@@ -113,22 +113,26 @@ export function WalletProvider({
     return clusterApiUrl(network);
   }, [network, endpoint]);
 
-  // Create wallet adapters - MWA is registered globally and will be available if supported
+  // Create wallet adapters - MUST be client-side only
   // Wait for MWA to be registered before creating wallets on Android
   const wallets = useMemo(() => {
-    // Always return at least basic wallets to prevent empty array
+    // CRITICAL: Never create wallets during SSR
+    if (typeof window === 'undefined' || !mounted) {
+      return [];
+    }
+
     const walletList: any[] = [];
 
     // On Android, add SolanaMobileWalletAdapter if available
     // This provides the "Mobile Wallet Adapter" option in the wallet selection modal
-    if (mounted && isAndroidDevice && mwaRegistered && mobileAdapterClass) {
+    if (isAndroidDevice && mwaRegistered && mobileAdapterClass) {
       try {
         walletList.push(
           new mobileAdapterClass({
             appIdentity: {
               name: 'Solana dApp',
-              uri: typeof window !== 'undefined' ? window.location.origin : '',
-              icon: typeof window !== 'undefined' ? `${window.location.origin}/icon.png` : '',
+              uri: window.location.origin,
+              icon: `${window.location.origin}/icon.png`,
             },
           })
         );
