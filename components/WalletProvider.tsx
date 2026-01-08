@@ -47,23 +47,11 @@ export function WalletProvider({
 }: WalletProviderProps) {
   const [mounted, setMounted] = useState(false);
   const [mwaRegistered, setMwaRegistered] = useState(false);
-  const [SolanaMobileWalletAdapter, setSolanaMobileWalletAdapter] = useState<any>(null);
+  const [mobileAdapterClass, setMobileAdapterClass] = useState<any>(null);
 
   // Ensure we're on the client side before detecting platform and registering MWA
   useEffect(() => {
     setMounted(true);
-
-    // Try to load SolanaMobileWalletAdapter if package is installed
-    if (typeof window !== 'undefined') {
-      // Dynamic import to avoid build-time errors if package is not installed
-      import('@solana-mobile/wallet-adapter-mobile')
-        .then((module) => {
-          setSolanaMobileWalletAdapter(() => module.SolanaMobileWalletAdapter);
-        })
-        .catch(() => {
-          // Package not installed - this is fine, will use registerMwa only
-        });
-    }
 
     // Register Mobile Wallet Adapter only on Android
     // This registers the MWA globally, making it available to wallet adapters
@@ -84,10 +72,25 @@ export function WalletProvider({
             chainSelector: createDefaultChainSelector(),
             onWalletNotFound: createDefaultWalletNotFoundHandler(),
           });
-          setMwaRegistered(true);
         } catch (error) {
           console.error('Failed to register Mobile Wallet Adapter:', error);
+        } finally {
+          // Always set to true to allow app to continue, even if registration failed
+          setMwaRegistered(true);
         }
+
+        // Try to load SolanaMobileWalletAdapter if package is installed
+        // Do this after MWA registration to avoid blocking
+        import('@solana-mobile/wallet-adapter-mobile')
+          .then((module) => {
+            if (module && module.SolanaMobileWalletAdapter) {
+              setMobileAdapterClass(module.SolanaMobileWalletAdapter);
+            }
+          })
+          .catch((err) => {
+            // Package not installed - this is fine, will use registerMwa only
+            console.log('Mobile wallet adapter package not installed, using registerMwa only');
+          });
       } else {
         setMwaRegistered(true);
       }
@@ -104,22 +107,32 @@ export function WalletProvider({
   // Create wallet adapters - MWA is registered globally and will be available if supported
   // Wait for MWA to be registered before creating wallets on Android
   const wallets = useMemo(() => {
-    if (!mounted) return [];
+    if (!mounted) {
+      // Return basic wallets during SSR/initial mount
+      return [
+        new PhantomWalletAdapter(),
+        new SolflareWalletAdapter()
+      ];
+    }
     
     const walletList: any[] = [];
 
     // On Android, add SolanaMobileWalletAdapter if available
     // This provides the "Mobile Wallet Adapter" option in the wallet selection modal
-    if (isAndroid() && mwaRegistered && SolanaMobileWalletAdapter) {
-      walletList.push(
-        new SolanaMobileWalletAdapter({
-          appIdentity: {
-            name: 'Solana dApp',
-            uri: typeof window !== 'undefined' ? window.location.origin : '',
-            icon: typeof window !== 'undefined' ? `${window.location.origin}/icon.png` : '',
-          },
-        })
-      );
+    if (isAndroid() && mwaRegistered && mobileAdapterClass) {
+      try {
+        walletList.push(
+          new mobileAdapterClass({
+            appIdentity: {
+              name: 'Solana dApp',
+              uri: typeof window !== 'undefined' ? window.location.origin : '',
+              icon: typeof window !== 'undefined' ? `${window.location.origin}/icon.png` : '',
+            },
+          })
+        );
+      } catch (error) {
+        console.error('Failed to create mobile wallet adapter:', error);
+      }
     }
 
     // Add Phantom and Solflare adapters
@@ -130,7 +143,7 @@ export function WalletProvider({
     );
 
     return walletList;
-  }, [mounted, mwaRegistered, SolanaMobileWalletAdapter]);
+  }, [mounted, mwaRegistered, mobileAdapterClass]);
 
   // Don't render until mounted and MWA is registered (if Android)
   if (!mounted || (isAndroid() && !mwaRegistered)) {
