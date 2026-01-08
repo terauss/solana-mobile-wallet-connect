@@ -1,176 +1,224 @@
-# Solana Wallet Connect with Mobile Adapter Support
+# Solana Wallet Connect with Mobile Wallet Adapter
 
-A production-ready React dApp with Solana wallet adapter support that automatically uses **Solana Mobile Wallet Adapter** for Android devices and **Phantom/Solflare** for desktop and iOS.
+A Next.js TypeScript dApp with Solana wallet adapter support, including **Android Mobile Wallet Adapter** for seamless mobile wallet connections.
 
 ## Features
 
-- ✅ Automatic Android detection
-- ✅ Solana Mobile Wallet Adapter for Android
-- ✅ Phantom & Solflare for Desktop & iOS
-- ✅ TypeScript support
-- ✅ Production-ready code structure
+- ✅ **Android Mobile Wallet Adapter** - Native Android wallet support via Solana Mobile Wallet Adapter
+- ✅ **Desktop & iOS Support** - Phantom and Solflare wallet adapters
+- ✅ **Platform Detection** - Automatically detects Android devices and enables Mobile Wallet Adapter
+- ✅ **TypeScript** - Fully typed for better developer experience
+- ✅ **Next.js 14** - App Router with server components support
 
 ## Installation
 
+1. Install dependencies:
+
 ```bash
 npm install
+# or
+yarn install
+# or
+pnpm install
 ```
 
-## Project Structure
+## WalletProvider Integration
 
-```
-solana-wallet-connect/
-├── src/
-│   ├── components/
-│   │   └── WalletProvider.tsx    # Main wallet provider with conditional logic
-│   ├── utils/
-│   │   └── deviceDetection.ts    # Android/iOS detection utilities
-│   ├── App.tsx                    # Example app component
-│   └── main.tsx                   # Entry point
-├── package.json
-├── tsconfig.json
-└── vite.config.ts
-```
+The `WalletProvider` is integrated in the root layout (`app/layout.tsx`), providing wallet functionality to all pages in your app.
 
-## Integration Guide
+### Current Integration
 
-### 1. Wrap Your App with WalletProvider
-
-The `WalletContextProvider` component should wrap your entire application at the root level. This is typically done in your main entry file or App component.
-
-**Example Integration:**
+The provider is already set up in `app/layout.tsx`:
 
 ```tsx
-import { WalletContextProvider } from './components/WalletProvider';
-import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
+import { WalletProvider } from '@/components/WalletProvider';
 
-function App() {
+export default function RootLayout({ children }) {
   return (
-    <WalletContextProvider network={WalletAdapterNetwork.Mainnet}>
-      {/* Your app components */}
-    </WalletContextProvider>
+    <html lang="en">
+      <body>
+        <WalletProvider>
+          {children}
+        </WalletProvider>
+      </body>
+    </html>
   );
 }
 ```
 
-### 2. Use Wallet Hooks in Your Components
+### Customization Options
 
-Inside any component that's a child of `WalletContextProvider`, you can use the wallet hooks:
+You can customize the WalletProvider with these props:
 
 ```tsx
-import { useWallet } from '@solana/wallet-adapter-react';
+<WalletProvider
+  network={WalletAdapterNetwork.Mainnet} // or Devnet, Testnet
+  endpoint="https://your-custom-rpc-endpoint.com" // Optional custom RPC endpoint
+>
+  {children}
+</WalletProvider>
+```
+
+### Using Wallet in Components
+
+Any component can access wallet functionality using hooks:
+
+```tsx
+'use client';
+
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
-function MyComponent() {
-  const { publicKey, connected, disconnect } = useWallet();
-  
-  return (
-    <div>
-      <WalletMultiButton />
-      {connected && <p>Connected: {publicKey?.toBase58()}</p>}
-    </div>
-  );
+export default function MyComponent() {
+  const { wallet, publicKey, connected } = useWallet();
+  const { connection } = useConnection();
+
+  // Your component logic
 }
-```
-
-### 3. Configuration Options
-
-#### Network Selection
-
-```tsx
-// Use mainnet
-<WalletContextProvider network={WalletAdapterNetwork.Mainnet}>
-
-// Use devnet (for testing)
-<WalletContextProvider network={WalletAdapterNetwork.Devnet}>
-
-// Use testnet
-<WalletContextProvider network={WalletAdapterNetwork.Testnet}>
-```
-
-#### Custom RPC Endpoint
-
-```tsx
-<WalletContextProvider 
-  network={WalletAdapterNetwork.Mainnet}
-  endpoint="https://api.mainnet-beta.solana.com"
->
-```
-
-#### Customize Mobile Wallet Adapter Identity
-
-Edit `src/components/WalletProvider.tsx` and update the `appIdentity` object:
-
-```tsx
-new SolanaMobileWalletAdapter({
-  appIdentity: {
-    name: 'Your dApp Name',
-    uri: 'https://your-dapp-url.com',
-    icon: 'https://your-dapp-url.com/icon.png',
-  },
-})
 ```
 
 ## How It Works
 
-1. **Device Detection**: The `isAndroidDevice()` utility function checks the user agent to detect Android devices.
+### Platform Detection
 
-2. **Conditional Wallet Loading**:
-   - **Android**: Loads `SolanaMobileWalletAdapter` only
-   - **Desktop & iOS**: Loads `PhantomWalletAdapter` and `SolflareWalletAdapter`
+The app detects Android devices using the `isAndroid()` utility function that checks the user agent:
 
-3. **Automatic Connection**: The `autoConnect` prop enables automatic wallet reconnection on page reload.
+```typescript
+// utils/isAndroid.ts
+export function isAndroid(): boolean {
+  if (typeof window === 'undefined') return false;
+  return /android/.test(window.navigator.userAgent.toLowerCase());
+}
+```
 
-## Android Requirements
+### Wallet Adapter Selection
 
-For Android users to connect their wallets:
+The `WalletProvider` component automatically selects the appropriate wallet adapters:
 
-1. They must have a Solana Mobile Wallet installed (e.g., Solflare Mobile, Phantom Mobile)
-2. The wallet must support the Solana Mobile Wallet Adapter protocol
-3. The dApp must be served over HTTPS (required for mobile wallet connections)
+- **Android**: Includes `SolanaMobileWalletAdapter` + Phantom + Solflare
+- **Desktop/iOS**: Includes Phantom + Solflare only
+
+This happens in `components/WalletProvider.tsx`:
+
+```tsx
+const wallets = useMemo(() => {
+  const baseWallets = [
+    new PhantomWalletAdapter(),
+    new SolflareWalletAdapter(),
+  ];
+
+  // Add Mobile Wallet Adapter only on Android
+  if (isAndroid()) {
+    return [
+      new SolanaMobileWalletAdapter({
+        appIdentity: {
+          name: 'Solana dApp',
+          uri: window.location.origin,
+          icon: `${window.location.origin}/icon.png`,
+        },
+      }),
+      ...baseWallets,
+    ];
+  }
+
+  return baseWallets;
+}, []);
+```
+
+## Mobile Wallet Adapter Configuration
+
+The Mobile Wallet Adapter requires app identity information:
+
+- **name**: Your app name (shown to users)
+- **uri**: Your app's origin URL
+- **icon**: URL to your app icon (192x192px PNG recommended)
+
+Update these in `components/WalletProvider.tsx` to match your app:
+
+```tsx
+new SolanaMobileWalletAdapter({
+  appIdentity: {
+    name: 'Your App Name',
+    uri: 'https://yourapp.com',
+    icon: 'https://yourapp.com/icon.png',
+  },
+})
+```
 
 ## Development
 
+Run the development server:
+
 ```bash
-# Start development server
 npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+```
 
-# Build for production
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Production Build
+
+```bash
 npm run build
-
-# Preview production build
-npm run preview
+npm start
 ```
 
 ## Testing on Android
 
-1. Build your app: `npm run build`
-2. Serve it over HTTPS (use a service like Vercel, Netlify, or ngrok)
-3. Open the URL on an Android device
-4. The app will automatically detect Android and use the Mobile Wallet Adapter
+1. Build and deploy your app to a hosting service (Vercel, Netlify, etc.)
+2. Access the app from an Android device
+3. The Mobile Wallet Adapter will automatically appear in the wallet selection modal
+4. Users with compatible Solana mobile wallets (like Saga) can connect natively
 
-## Production Checklist
+## Supported Wallets
 
-- [ ] Update `appIdentity` in `WalletProvider.tsx` with your dApp details
-- [ ] Set network to `WalletAdapterNetwork.Mainnet` for production
-- [ ] Configure custom RPC endpoint if needed
-- [ ] Test on actual Android devices
-- [ ] Ensure HTTPS is enabled
-- [ ] Update app name and metadata
+### Desktop & iOS
+- Phantom
+- Solflare
+
+### Android (via Mobile Wallet Adapter)
+- All wallets compatible with Solana Mobile Wallet Adapter
+- Phantom (if installed on Android)
+- Solflare (if installed on Android)
+- Native mobile wallets (Saga, etc.)
+
+## Project Structure
+
+```
+├── app/
+│   ├── layout.tsx          # Root layout with WalletProvider integration
+│   ├── page.tsx            # Example page with wallet connection
+│   └── globals.css         # Global styles
+├── components/
+│   └── WalletProvider.tsx  # Wallet provider with Android detection
+├── utils/
+│   └── isAndroid.ts        # Android detection utility
+├── package.json
+├── tsconfig.json
+└── next.config.js
+```
+
+## Important Notes
+
+1. **Mobile Wallet Adapter** only works on Android devices with compatible Solana mobile wallets installed
+2. **App Icon**: Make sure to provide a valid icon URL in the Mobile Wallet Adapter config
+3. **HTTPS**: Mobile Wallet Adapter requires HTTPS in production
+4. **SSR**: The Android detection is client-side only (safe with Next.js)
 
 ## Troubleshooting
 
-### Android wallet not connecting
+### Mobile Wallet Adapter not appearing
+- Ensure you're on an Android device
+- Check that the app is served over HTTPS (required in production)
+- Verify the user agent includes "android"
 
-- Ensure the app is served over HTTPS
-- Check that a compatible Solana mobile wallet is installed
-- Verify the `appIdentity` configuration is correct
-
-### Desktop wallets not showing
-
+### Wallet connection fails
 - Check browser console for errors
-- Ensure wallet extensions are installed
-- Try refreshing the page
+- Ensure RPC endpoint is accessible
+- Verify wallet adapter versions are compatible
 
 ## License
 
