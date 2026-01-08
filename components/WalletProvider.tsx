@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useEffect, useState, type ReactNode } from 'react';
 import { ConnectionProvider, WalletProvider as SolanaWalletProvider } from '@solana/wallet-adapter-react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
@@ -15,35 +15,10 @@ import {
   registerMwa,
 } from '@solana-mobile/wallet-standard-mobile';
 import { clusterApiUrl } from '@solana/web3.js';
+import { isAndroid } from '@/utils/isAndroid';
 
 // Import wallet adapter CSS
 import '@solana/wallet-adapter-react-ui/styles.css';
-
-// Register Mobile Wallet Adapter on Android - must happen before WalletProvider initializes
-if (typeof window !== 'undefined') {
-  const userAgent = window.navigator.userAgent.toLowerCase();
-  const isAndroidDevice = /android/.test(userAgent);
-
-  if (isAndroidDevice) {
-    try {
-      registerMwa({
-        appIdentity: {
-          name: 'Solana dApp',
-          uri: window.location.origin,
-          icon: `${window.location.origin}/icon.png`,
-        },
-        authorizationCache: createDefaultAuthorizationCache(),
-        chains: ['solana:mainnet', 'solana:devnet', 'solana:testnet'],
-        chainSelector: createDefaultChainSelector(),
-        onWalletNotFound: createDefaultWalletNotFoundHandler(),
-      });
-      console.debug('Mobile Wallet Adapter registered successfully on Android');
-    } catch (error) {
-      // MWA might already be registered, ignore the error
-      console.debug('MWA registration error (may already be registered):', error);
-    }
-  }
-}
 
 interface WalletProviderProps {
   children: ReactNode;
@@ -67,6 +42,34 @@ export function WalletProvider({
   network = WalletAdapterNetwork.Mainnet,
   endpoint,
 }: WalletProviderProps) {
+  const [mounted, setMounted] = useState(false);
+
+  // Ensure we're on the client side before detecting platform and registering MWA
+  useEffect(() => {
+    setMounted(true);
+
+    // Register Mobile Wallet Adapter only on Android
+    // This registers the MWA globally, making it available to wallet adapters
+    if (typeof window !== 'undefined') {
+      const userAgent = window.navigator.userAgent.toLowerCase();
+      const isAndroidDevice = /android/.test(userAgent);
+
+      if (isAndroidDevice) {
+        registerMwa({
+          appIdentity: {
+            name: 'Solana dApp',
+            uri: window.location.origin,
+            icon: `${window.location.origin}/icon.png`,
+          },
+          authorizationCache: createDefaultAuthorizationCache(),
+          chains: ['solana:mainnet', 'solana:devnet', 'solana:testnet'],
+          chainSelector: createDefaultChainSelector(),
+          onWalletNotFound: createDefaultWalletNotFoundHandler(),
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   // Determine the RPC endpoint
   const rpcEndpoint = useMemo(() => {
