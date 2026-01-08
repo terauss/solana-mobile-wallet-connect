@@ -17,6 +17,9 @@ import {
 import { clusterApiUrl } from '@solana/web3.js';
 import { isAndroid } from '@/utils/isAndroid';
 
+// Optional import for SolanaMobileWalletAdapter
+// Install @solana-mobile/wallet-adapter-mobile for full Android support
+
 // Import wallet adapter CSS
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -43,10 +46,24 @@ export function WalletProvider({
   endpoint,
 }: WalletProviderProps) {
   const [mounted, setMounted] = useState(false);
+  const [mwaRegistered, setMwaRegistered] = useState(false);
+  const [SolanaMobileWalletAdapter, setSolanaMobileWalletAdapter] = useState<any>(null);
 
   // Ensure we're on the client side before detecting platform and registering MWA
   useEffect(() => {
     setMounted(true);
+
+    // Try to load SolanaMobileWalletAdapter if package is installed
+    if (typeof window !== 'undefined') {
+      // Dynamic import to avoid build-time errors if package is not installed
+      import('@solana-mobile/wallet-adapter-mobile')
+        .then((module) => {
+          setSolanaMobileWalletAdapter(() => module.SolanaMobileWalletAdapter);
+        })
+        .catch(() => {
+          // Package not installed - this is fine, will use registerMwa only
+        });
+    }
 
     // Register Mobile Wallet Adapter only on Android
     // This registers the MWA globally, making it available to wallet adapters
@@ -55,17 +72,24 @@ export function WalletProvider({
       const isAndroidDevice = /android/.test(userAgent);
 
       if (isAndroidDevice) {
-        registerMwa({
-          appIdentity: {
-            name: 'Solana dApp',
-            uri: window.location.origin,
-            icon: `${window.location.origin}/icon.png`,
-          },
-          authorizationCache: createDefaultAuthorizationCache(),
-          chains: ['solana:mainnet', 'solana:devnet', 'solana:testnet'],
-          chainSelector: createDefaultChainSelector(),
-          onWalletNotFound: createDefaultWalletNotFoundHandler(),
-        });
+        try {
+          registerMwa({
+            appIdentity: {
+              name: 'Solana dApp',
+              uri: window.location.origin,
+              icon: `${window.location.origin}/icon.png`,
+            },
+            authorizationCache: createDefaultAuthorizationCache(),
+            chains: ['solana:mainnet', 'solana:devnet', 'solana:testnet'],
+            chainSelector: createDefaultChainSelector(),
+            onWalletNotFound: createDefaultWalletNotFoundHandler(),
+          });
+          setMwaRegistered(true);
+        } catch (error) {
+          console.error('Failed to register Mobile Wallet Adapter:', error);
+        }
+      } else {
+        setMwaRegistered(true);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,14 +102,40 @@ export function WalletProvider({
   }, [network, endpoint]);
 
   // Create wallet adapters - MWA is registered globally and will be available if supported
+  // Wait for MWA to be registered before creating wallets on Android
   const wallets = useMemo(() => {
-    return [
+    if (!mounted) return [];
+    
+    const walletList: any[] = [];
+
+    // On Android, add SolanaMobileWalletAdapter if available
+    // This provides the "Mobile Wallet Adapter" option in the wallet selection modal
+    if (isAndroid() && mwaRegistered && SolanaMobileWalletAdapter) {
+      walletList.push(
+        new SolanaMobileWalletAdapter({
+          appIdentity: {
+            name: 'Solana dApp',
+            uri: typeof window !== 'undefined' ? window.location.origin : '',
+            icon: typeof window !== 'undefined' ? `${window.location.origin}/icon.png` : '',
+          },
+        })
+      );
+    }
+
+    // Add Phantom and Solflare adapters
+    // On Android, these will use MWA if available (via registerMwa)
+    walletList.push(
       new PhantomWalletAdapter(),
-      new SolflareWalletAdapter(),
-      // Mobile Wallet Adapter is registered globally via registerMwa() above
-      // and will automatically appear if supported on the device
-    ];
-  }, []);
+      new SolflareWalletAdapter()
+    );
+
+    return walletList;
+  }, [mounted, mwaRegistered, SolanaMobileWalletAdapter]);
+
+  // Don't render until mounted and MWA is registered (if Android)
+  if (!mounted || (isAndroid() && !mwaRegistered)) {
+    return null;
+  }
 
   return (
     <ConnectionProvider endpoint={rpcEndpoint}>
